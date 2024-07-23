@@ -30,3 +30,19 @@
 *.exe
 *.out
 *.app
+
+# Log files
+*.tlog
+*.log
+
+# Other build related files that would have to be regenerated anyways
+*.lastbuildstate
+*.bi
+*.cache
+*.metagen
+
+# Debug pdb's
+*.pdb
+
+# Some Visual Studio file that gets created when you open it
+*.opensdf
