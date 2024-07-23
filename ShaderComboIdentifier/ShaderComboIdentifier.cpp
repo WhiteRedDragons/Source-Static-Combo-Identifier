@@ -43,57 +43,65 @@ unsigned int BitsRequired(unsigned int value)
 
 void CalculateMissingCombo(unsigned int missingCombo)
 {
-	vector<unsigned int> values(pStatics.size());
 	unsigned int combo = missingCombo;
-
 	cout << "Combo number: " << combo << endl;
-//	PrintBits(combo, 12); // Display the last 12 bits
 
-	// FIXME: This whole thing doesn't account for minimum values of a combo
-	// Honestly you shouldn't be using those anyways.. but that should probably be supported
-	vector<unsigned int> BitMasks(pStatics.size());
-	vector<unsigned int> PowerOfTwos(pStatics.size());
-	unsigned int nPowerOfTwo = 1;
+	unsigned int nLargestString = 1;
+	unsigned int nOffset = 1;
+
+	// We first need to compute the total offset for the largest multiplier
 	for (unsigned int nStatic = 0; nStatic < pStatics.size(); nStatic++)
 	{
-		PowerOfTwos[nStatic] = nPowerOfTwo;
-		BitMasks[nStatic] = (pStatics[nStatic].nMaxValue) * nPowerOfTwo;
-		for (unsigned int n = 0; n < BitsRequired(pStatics[nStatic].nMaxValue); n++)
-		{
-			nPowerOfTwo *= 2;
-		}
+		nOffset *= pStatics[nStatic].nMaxValue + 1;
 	}
 
-	// We will use the next loop to figure out which one is the largest string
-	// This is just used for text alignment
-	unsigned int nLargestString = 1;
+	// Adjust the multiplier
+	// FIXME: Figure out why EXACTLY this happens
+	// I assume this happens because both the first and second static
+	// would be forced to share the same bit when the first static needs more than one bit
+	// example, 1 + 2 is no problem you get 0000 0011 but when you do 2 + 2 you get 0000 0100
+	// when the second combo could be a maximum of 2 you'd then run into the issue that two combos need the same offset
+	if (pStatics[0].nMaxValue == 1)
+		nOffset /= 2;
 
-	// Now do it again but reverse the action
-	for (unsigned int nStatic = 0; nStatic < pStatics.size(); nStatic++)
+	// Loop through the statics in reverse order
+	// Important its int, apparently Vector doesn't like uint
+	for (int nStatic = pStatics.size() - 1; nStatic >= 0; --nStatic)
 	{
-		// Mask away only the region we are interested in
-		unsigned int nIsolated = combo & BitMasks[nStatic];
+		// Calculate the current offset for this static
+		unsigned int nCurrentOffset = pStatics[nStatic].nMaxValue + 1;
 
-		// Divide by its power of two to bring back the original range
-		nIsolated /= PowerOfTwos[nStatic];
+		// Convert combo to float and divide by the current offset
+		float floatCombo = static_cast<float>(combo);
+		float floatValue = floatCombo / (float)nOffset;
 
-		// Store the value
-		values[nStatic] = nIsolated;
+//		cout << floatCombo << " / " << nOffset << " = " << floatValue << endl;
 
-		// If the name of this combo is longer than the others set it as the new maximum length
+		// Round down and convert to integer to get the final value
+		pStatics[nStatic].nFinalValue = static_cast<unsigned int>(std::floor(floatValue));
+
+		// Subtract value * offset from combo
+		combo -= pStatics[nStatic].nFinalValue * nOffset;
+
+		// Update nOffset for the next static
+		// We have to do this based on the value of that *next* static in the line
+		int nLookup = (nStatic - 1) < 0 ? 0 : nStatic - 1;
+		int nDivider = pStatics[nLookup].nMaxValue + 1;
+
+		nOffset /= nDivider;
+
+		// Determine the largest string for formatting
 		unsigned int nTextLength = pStatics[nStatic].sName.length();
 		nLargestString = nTextLength > nLargestString ? nTextLength : nLargestString;
 	}
 
-	// After the name comes a ", then a spacebar
-	// So adjust for those
+	// Adjust for name formatting
 	nLargestString += 2;
 
+	// Output the results
 	for (unsigned int nStatic = 0; nStatic < pStatics.size(); nStatic++)
 	{
-		pStatics[nStatic].nFinalValue = values[nStatic];
 		cout << "\"" << pStatics[nStatic].sName << "\"";
-		// Adjust to the right. Account for the name length variance
 		cout << right << setw(nLargestString - pStatics[nStatic].sName.length() + 2);
 		cout << "\"" << pStatics[nStatic].nFinalValue << "\"" << endl;
 	}
@@ -185,15 +193,41 @@ int main(array<System::String ^> ^args)
 
 		// Make sure if we feed this back in we get the same number back
 		cout << endl << "Consistency check.." << endl;
+
+		// I don't know why this is the case but its what I see happening in the includes..
+		unsigned int nMultiplier = 1;
 		unsigned int nResultCombo = 0;
-		unsigned int nPowerOfTwo = 1;
+
+		// We first need to compute the total offset for the largest multiplier
 		for (unsigned int nStatic = 0; nStatic < pStatics.size(); nStatic++)
 		{
-			nResultCombo += pStatics[nStatic].nFinalValue * nPowerOfTwo;
-			for (unsigned int n = 0; n < BitsRequired(pStatics[nStatic].nMaxValue); n++)
-			{
-				nPowerOfTwo *= 2;
-			}
+			nMultiplier *= pStatics[nStatic].nMaxValue + 1;
+		}
+
+		// FIXME: Figure out why this happens
+		// This is merely an observation from Includes
+		// If the first combo is not a max value of 1, it will do *2 instead of *1
+		// I assume its to force an extra bit of space
+		if (pStatics[0].nMaxValue == 1)
+			nMultiplier /= 2;
+
+		// Important its int, apparently Vector doesn't like uint
+		for (int nStatic = (pStatics.size() - 1); nStatic >= 0; --nStatic)
+		{
+			nResultCombo += pStatics[nStatic].nFinalValue * nMultiplier;
+
+			// Adjust the multiplier
+			// FIXME: Figure out why EXACTLY this happens
+			// I assume this happens because both the first and second static
+			// would be forced to share the same bit when the first static needs more than one bit
+			// example, 1 + 2 is no problem you get 0000 0011 but when you do 2 + 2 you get 0000 0100
+			// when the second combo could be a maximum of 2 you'd then run into the issue that two combos need the same offset
+			if (nStatic == 0 && pStatics[0].nMaxValue == 1)
+				nMultiplier = 1;
+			else if (nStatic == 0)
+				nMultiplier = 2;
+			else
+				nMultiplier /= (pStatics[nStatic - 1].nMaxValue + 1);
 		}
 
 		cout << "Binary : "; PrintBits(nResultCombo, 10); cout << endl;
@@ -201,11 +235,24 @@ int main(array<System::String ^> ^args)
 
 		if (nResultCombo != nMissingCombo)
 		{
-			cout << "Something went wrong. Make sure your input is smaller than the maximum number of combos on this Shader.." << endl;
-			cout << "Please note: This result is calculated based on the system used to construct the number." << endl;
-			cout << "You can see how its calculated near the end of the include file for the Shader" << endl;
-			cout << "Because this file changes with each shader compile," << endl;
-			cout << "you should recompile the dll before you fetch a missing combo number!" << endl;
+			// Oddball scenario
+			// Because the first value is multiplied by *2 instead of *1
+			// You cannot have uneven combo numbers, since the first bit will always be a 0
+			// In fact, throw the result value through the logic and you get the same static values
+			// So the result is correct, its just not the same as the original
+			if (pStatics[0].nMaxValue > 1 && nResultCombo == (nMissingCombo - 1))
+			{
+				cout << "Correct result, sort of. You should double check if this makes sense regardless! :)" << endl;
+			}
+			else
+			{
+				cout << "Something went wrong. Make sure your input is smaller than the maximum number of combos on this Shader.." << endl;
+				cout << "NOTE 1: This Value is calculated based on the system used to construct the number in an include." << endl;
+				cout << "NOTE 2: However this is prone to mistakes as its done based on observation." << endl;
+				cout << "You can see how its calculated near the end of the include file for the Shader" << endl;
+				cout << "Because this file changes with each shader compile," << endl;
+				cout << "you should recompile the dll before you fetch a missing combo number!" << endl;
+			}
 		}
 		else
 			cout << "Consistent result. You should double check if this makes sense regardless! :)" << endl;
